@@ -25,16 +25,16 @@ var (
 	VERSION                = "6.3.0"
 	LOCALE                 = "en"
 	PLATFORM               = "stake.com"
-	TOTAL_CLIENTS          = 500
-	CONCURRENT_CONNECTIONS = 500
-	RECONNECT_DELAY        = 10 * time.Millisecond
-	HEARTBEAT_INTERVAL     = 10 * time.Millisecond
-	HAMMER_INTERVAL        = 10 * time.Millisecond
+	TOTAL_CLIENTS          = 1000
+	CONCURRENT_CONNECTIONS = 1000
+	RECONNECT_DELAY        = 5 * time.Millisecond
+	HEARTBEAT_INTERVAL     = 5 * time.Millisecond
+	HAMMER_INTERVAL        = 5 * time.Millisecond
 	MAX_RETRY_BACKOFF      = 5 * time.Second
 	BATCH_SIZE             = 2000
-	MAX_WORKERS            = 400
-	REFRESH_INTERVAL       = 50 * time.Millisecond
-	REFRESH_BATCH_SIZE     = 100
+	MAX_WORKERS            = 800
+	REFRESH_INTERVAL       = 20 * time.Millisecond
+	REFRESH_BATCH_SIZE     = 400
 )
 
 // HTTP Client with optimized settings for high concurrency
