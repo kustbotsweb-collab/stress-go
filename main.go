@@ -25,24 +25,24 @@ var (
 	VERSION                = "6.3.0"
 	LOCALE                 = "en"
 	PLATFORM               = "stake.com"
-	TOTAL_CLIENTS          = 20000 // Increased from 1000 -> 20,000
-	CONCURRENT_CONNECTIONS = 20000 // Increased from 1000 -> 20,000
+	TOTAL_CLIENTS          = 2000 // Increased from 1000 -> 20,000
+	CONCURRENT_CONNECTIONS = 2000 // Increased from 1000 -> 20,000
 	RECONNECT_DELAY        = 1 * time.Millisecond
 	HEARTBEAT_INTERVAL     = 1 * time.Millisecond // Supersonic Heartbeats
 	HAMMER_INTERVAL        = 1 * time.Millisecond // Supersonic Hammering
 	MAX_RETRY_BACKOFF      = 1 * time.Second
-	BATCH_SIZE             = 5000
-	MAX_WORKERS            = 20000 // Unlimited workers matching clients
+	BATCH_SIZE             = 500
+	MAX_WORKERS            = 2000 // Unlimited workers matching clients
 	REFRESH_INTERVAL       = 5 * time.Millisecond
-	REFRESH_BATCH_SIZE     = 1000
+	REFRESH_BATCH_SIZE     = 100
 )
 
 // HTTP Client with EXTREME settings for high concurrency
 var httpClient = &http.Client{
 	Timeout: 5 * time.Second, // Shorter timeout to fail fast and retry
 	Transport: &http.Transport{
-		MaxIdleConnsPerHost:   20000, // Massive pool
-		MaxIdleConns:          20000,
+		MaxIdleConnsPerHost:   2000, // Massive pool
+		MaxIdleConns:          2000,
 		IdleConnTimeout:       90 * time.Second,
 		DisableCompression:    true,
 		DisableKeepAlives:     false,
