@@ -23,7 +23,7 @@ var (
 	SERVER_URL      = getEnv("TARGET_URL", "wss://kingclaimer.xyz:8443/")
 	TOTAL_CLIENTS   = 20           // Recommended to keep at 1 to avoid Cloudflare flags
 	MAX_WORKERS     = 20           
-	RECONNECT_DELAY = 2 * time.Second // Slower reconnect to avoid IP bans
+	RECONNECT_DELAY = 1 * time.Second // Slower reconnect to avoid IP bans
 )
 
 // Worker Semaphore to limit max workers
