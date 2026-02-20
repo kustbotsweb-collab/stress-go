@@ -21,9 +21,9 @@ import (
 // ==========================================
 var (
 	SERVER_URL      = getEnv("TARGET_URL", "wss://kingclaimer.xyz:8443/")
-	TOTAL_CLIENTS   = 20          // Recommended to keep at 1 to avoid Cloudflare flags
-	MAX_WORKERS     = 2           
-	RECONNECT_DELAY = 1 * time.Second // Slower reconnect to avoid IP bans
+	TOTAL_CLIENTS   = 1           // Recommended to keep at 1 to avoid Cloudflare flags
+	MAX_WORKERS     = 1           
+	RECONNECT_DELAY = 10 * time.Second // Slower reconnect to avoid IP bans
 )
 
 // Worker Semaphore to limit max workers
@@ -192,12 +192,12 @@ func (c *StressClient) Run() {
 					}
 				}
 				
-				// Shutdown if authentication fails specifically
+				// Reconnect instead of shutting down if authentication fails
 				if data["message"] == "Authentication failed" {
-					log.Printf("🛑 BANNED/INVALID. Stopping...")
-					c.running = false
+					log.Printf("🛑 BANNED/INVALID. Reconnecting...")
 					c.Disconnect()
-					return
+					time.Sleep(RECONNECT_DELAY)
+					break
 				}
 			}
 		}
