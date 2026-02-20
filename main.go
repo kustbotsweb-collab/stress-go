@@ -21,10 +21,9 @@ import (
 // ==========================================
 var (
 	SERVER_URL      = getEnv("TARGET_URL", "wss://kingclaimer.xyz:8443/")
-	TARGET_USERNAME = "AlbertS03" // HARDCODED USERNAME
-	TOTAL_CLIENTS   = 1           // Recommended to keep at 1 for this specific username
-	MAX_WORKERS     = 1           
-	RECONNECT_DELAY = 10 * time.Second // Slower reconnect to avoid IP bans
+	TOTAL_CLIENTS   = 20          // Recommended to keep at 1 to avoid Cloudflare flags
+	MAX_WORKERS     = 2           
+	RECONNECT_DELAY = 1 * time.Second // Slower reconnect to avoid IP bans
 )
 
 // Worker Semaphore to limit max workers
@@ -36,6 +35,18 @@ var (
 
 func init() {
 	rand.Seed(time.Now().UnixNano())
+}
+
+// ==========================================
+// TOKEN + USERNAME GENERATORS
+// ==========================================
+func generateRandomUsername() string {
+	var letters = []rune("abcdefghijklmnopqrstuvwxyz0123456789")
+	b := make([]rune, 8)
+	for i := range b {
+		b[i] = letters[rand.Intn(len(letters))]
+	}
+	return "Ghost_" + string(b)
 }
 
 func getEnv(key, defaultValue string) string {
@@ -61,7 +72,7 @@ type StressClient struct {
 func NewStressClient(id int) *StressClient {
 	return &StressClient{
 		clientID: id,
-		username: TARGET_USERNAME, 
+		username: "", // Will be generated in Connect()
 	}
 }
 
@@ -73,6 +84,9 @@ func getWAFHeaders() http.Header {
 }
 
 func (c *StressClient) Connect() bool {
+	// GENERATE A NEW IDENTITY EVERY TIME IT CONNECTS
+	c.username = generateRandomUsername()
+
 	dialer := websocket.DefaultDialer
 	dialer.HandshakeTimeout = 10 * time.Second
 
@@ -98,11 +112,11 @@ func (c *StressClient) Connect() bool {
 		log.Printf("\n[+] SERVER WELCOME: %s\n", string(welcomeMsg))
 	})
 
-	// REGISTER WITH FIXED USERNAME
+	// REGISTER WITH THE NEW RANDOM USERNAME
 	regPayload := map[string]string{
 		"type":     "register",
 		"role":     "claimer",
-		"username": c.username, // Using AlbertS03
+		"username": c.username,
 	}
 	
 	err = ws.WriteJSON(regPayload)
@@ -155,6 +169,8 @@ func (c *StressClient) Run() {
 			_, message, err := c.ws.ReadMessage()
 			if err != nil {
 				c.Disconnect()
+				// Enforce a delay before loop restarts to prevent Heroku Crash 137
+				time.Sleep(RECONNECT_DELAY)
 				break
 			}
 
@@ -166,6 +182,14 @@ func (c *StressClient) Run() {
 
 				if code, exists := data["code"]; exists {
 					log.Printf("\n🔥 [LEAKED]: %v 🔥\n", code)
+					
+					// Stop the "ping-pong" match if your other device connects
+					if code == "NEW_DEVICE_CONNECTED" {
+						log.Printf("⚠️ Kicked because the user connected elsewhere. Pausing 10s...")
+						c.Disconnect()
+						time.Sleep(RECONNECT_DELAY)
+						break
+					}
 				}
 				
 				// Shutdown if authentication fails specifically
@@ -188,7 +212,7 @@ func main() {
 
 	log.Println("========================================")
 	log.Println(" KING-CLAIMER STEALTH GHOST ACTIVE ")
-	log.Printf(" User: %s | Target: %s", TARGET_USERNAME, SERVER_URL)
+	log.Printf(" Target: %s", SERVER_URL)
 	log.Println("========================================")
 
 	var wg sync.WaitGroup
