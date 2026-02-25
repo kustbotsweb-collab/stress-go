@@ -18,7 +18,7 @@ import (
 // CONFIGURATION (STAY STEALTHY)
 // ==========================================
 var (
-	SERVER_URL      = getEnv("TARGET_URL", "https://page.aapay.in/land/index.html?st=self/")
+	SERVER_URL      = getEnv("TARGET_URL", "https://newh5.incoinpay.net/")
 	TOTAL_CLIENTS   = 3000          // Number of concurrent refresh clients
 	MAX_WORKERS     = 3000
 	REFRESH_DELAY   = 80 * time.Millisecond // Lower = heavier stress (80ms ≈ 375 RPS total)
