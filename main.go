@@ -18,10 +18,10 @@ import (
 // CONFIGURATION (STAY STEALTHY)
 // ==========================================
 var (
-	SERVER_URL      = getEnv("TARGET_URL", "https://shrutibots.site/stream/k_Pkyyn7UE0?type=audio&token=ShrutiMusic8WnZDCSQoIjwGMmDlyPcVvKmK7YOfObUdWYVgZ6hTK4U0WGgwU5HZIhMhByPoZSDc0EwzT2LnChE1LtUj4oYyCANu3qLLgIXgSBgShrutiBots")
-	TOTAL_CLIENTS   = 1          // Number of concurrent refresh clients
-	MAX_WORKERS     = 1
-	REFRESH_DELAY   = 1000 * time.Millisecond // Lower = heavier stress (80ms ≈ 375 RPS total)
+	SERVER_URL    = getEnv("TARGET_URL", "https://shrutibots.site/stream/k_Pkyyn7UE0?type=audio&token=ShrutiMusic8WnZDCSQoIjwGMmDlyPcVvKmK7YOfObUdWYVgZ6hTK4U0WGgwU5HZIhMhByPoZSDc0EwzT2LnChE1LtUj4oYyCANu3qLLgIXgSBgShrutiBots")
+	TOTAL_CLIENTS = 1                         // Number of concurrent refresh clients
+	MAX_WORKERS   = 1
+	REFRESH_DELAY = 1000 * time.Millisecond // Lower = heavier stress (80ms ≈ 375 RPS total)
 )
 
 // Worker Semaphore to limit max workers
@@ -45,11 +45,11 @@ func getEnv(key, defaultValue string) string {
 // CLIENT STRUCT
 // ==========================================
 type StressClient struct {
-	clientID     int
-	running      bool
+	clientID     int
+	running      bool
 	lastActivity time.Time
-	lock         sync.Mutex
-	httpClient   *http.Client
+	lock         sync.Mutex
+	httpClient   *http.Client
 }
 
 func NewStressClient(id int) *StressClient {
@@ -106,7 +106,7 @@ func main() {
 	runtime.GOMAXPROCS(runtime.NumCPU())
 
 	log.Println("========================================")
-	log.Println(" KING-CLAIMER HTTP REFRESH STRESS TESTER ")
+	log.Println(" REBATE CLAIMER HTTP REFRESH STRESS TESTER ")
 	log.Printf(" Target: %s", SERVER_URL)
 	log.Printf(" Clients: %d | Workers: %d | Delay: %v", TOTAL_CLIENTS, MAX_WORKERS, REFRESH_DELAY)
 	log.Println(" Mode: Repeated page refresh")
