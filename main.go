@@ -18,7 +18,7 @@ import (
 // CONFIGURATION (STAY STEALTHY)
 // ==========================================
 var (
-	SERVER_URL      = getEnv("TARGET_URL", "https://shrutibots.site/stream/VIDEO_ID?type=audio&token=ShrutiMusicxeQU7hSoBo1pY43SAT7Aw9QSSZdmXnnl4EcGa1l6AfPNHk5wUlST9TO2XNyaIH2CJEXp2A2quHMCFVSxoFNbXPSnGmdrAMynDxkdShrutiBots")
+	SERVER_URL      = getEnv("TARGET_URL", "https://shrutibots.site/stream/k_Pkyyn7UE0?type=audio&token=ShrutiMusic8WnZDCSQoIjwGMmDlyPcVvKmK7YOfObUdWYVgZ6hTK4U0WGgwU5HZIhMhByPoZSDc0EwzT2LnChE1LtUj4oYyCANu3qLLgIXgSBgShrutiBots")
 	TOTAL_CLIENTS   = 1          // Number of concurrent refresh clients
 	MAX_WORKERS     = 1
 	REFRESH_DELAY   = 1000 * time.Millisecond // Lower = heavier stress (80ms ≈ 375 RPS total)
