@@ -21,9 +21,9 @@ import (
 // ==========================================
 var (
 	SERVER_URL    = getEnv("TARGET_URL", "https://shrutibots.site/")
-	TOTAL_CLIENTS = 2                        // Number of concurrent refresh clients
-	MAX_WORKERS   = 2
-	REFRESH_DELAY = 5000 * time.Millisecond // Lower = heavier stress
+	TOTAL_CLIENTS = 400                        // Number of concurrent refresh clients
+	MAX_WORKERS   = 400
+	REFRESH_DELAY = 500 * time.Millisecond // Lower = heavier stress
 )
 
 // Worker Semaphore to limit max workers
