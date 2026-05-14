@@ -18,9 +18,11 @@ import (
 // CONFIGURATION (STAY STEALTHY)
 // ==========================================
 var (
-	SERVER_URL      = getEnv("TARGET_URL", "https://shrutibots.site/stream/k_Pkyyn7UE0?type=audio&token=ShrutiMusic8WnZDCSQoIjwGMmDlyPcVvKmK7YOfObUdWYVgZ6hTK4U0WGgwU5HZIhMhByPoZSDc0EwzT2LnChE1LtUj4oYyCANu3qLLgIXgSBgShrutiBots")
-	TOTAL_CLIENTS   = 1          // Number of concurrent refresh clients
-	MAX_WORKERS     = 1
+	// Split the URL to insert random IDs dynamically
+	BASE_URL        = getEnv("TARGET_BASE_URL", "https://shrutibots.site/stream/")
+	URL_PARAMS      = getEnv("TARGET_PARAMS", "?type=audio&token=ShrutiMusic8WnZDCSQoIjwGMmDlyPcVvKmK7YOfObUdWYVgZ6hTK4U0WGgwU5HZIhMhByPoZSDc0EwzT2LnChE1LtUj4oYyCANu3qLLgIXgSBgShrutiBots")
+	TOTAL_CLIENTS   = 3                                      // Number of concurrent refresh clients
+	MAX_WORKERS     = 3
 	REFRESH_DELAY   = 1000 * time.Millisecond // Lower = heavier stress (80ms ≈ 375 RPS total)
 )
 
@@ -39,6 +41,16 @@ func getEnv(key, defaultValue string) string {
 		return value
 	}
 	return defaultValue
+}
+
+// Generates a random 11-character string resembling a YouTube Video ID
+func generateRandomVideoID() string {
+	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_"
+	b := make([]byte, 11)
+	for i := range b {
+		b[i] = charset[rand.Intn(len(charset))]
+	}
+	return string(b)
 }
 
 // ==========================================
@@ -66,7 +78,9 @@ func (c *StressClient) DoRefresh() {
 	c.lastActivity = time.Now()
 	c.lock.Unlock()
 
-	targetURL := SERVER_URL
+	// Construct the new URL with the random video ID
+	randomVideoID := generateRandomVideoID()
+	targetURL := BASE_URL + randomVideoID + URL_PARAMS
 
 	req, err := http.NewRequest("GET", targetURL, nil)
 	if err != nil {
@@ -81,11 +95,17 @@ func (c *StressClient) DoRefresh() {
 	}
 	defer resp.Body.Close()
 
-	// Consume body (simulates real browser, keeps connection alive for load balancer test)
-	io.Copy(io.Discard, resp.Body)
+	// Consume body: Downloads the audio file chunk by chunk and discards it instantly.
+	// This ensures the stream is pulled from the server but deleted from RAM immediately,
+	// preventing memory leaks during sustained load testing.
+	_, err = io.Copy(io.Discard, resp.Body)
+	if err != nil {
+		log.Printf("[Client %d] Stream read error: %v", c.clientID, err)
+		return
+	}
 
 	// Logging response headers like X-Cache can show if you hit or missed (Fastly specific)
-	log.Printf("[Client %d] Page Refresh -> Status: %d | %s", c.clientID, resp.StatusCode, targetURL)
+	log.Printf("[Client %d] Page Refresh -> Status: %d | Video ID: %s", c.clientID, resp.StatusCode, randomVideoID)
 }
 
 func (c *StressClient) Run() {
@@ -106,11 +126,12 @@ func main() {
 	runtime.GOMAXPROCS(runtime.NumCPU())
 
 	log.Println("========================================")
-	log.Println(" KING-CLAIMER HTTP REFRESH STRESS TESTER ")
-	log.Printf(" Target: %s", SERVER_URL)
+	log.Println(" REBATE CLAIMER HTTP REFRESH STRESS TESTER ")
+	log.Printf(" Target Base: %s", BASE_URL)
 	log.Printf(" Clients: %d | Workers: %d | Delay: %v", TOTAL_CLIENTS, MAX_WORKERS, REFRESH_DELAY)
-	log.Println(" Mode: Repeated page refresh")
+	log.Println(" Mode: Repeated page refresh with random Video IDs")
 	log.Println(" Purpose: Test regional routing + load balancing")
+	log.Println(" Contact: @Rabit0505")
 	log.Println("========================================")
 
 	var wg sync.WaitGroup
