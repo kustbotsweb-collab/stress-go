@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -54,6 +53,15 @@ func generateRandomYouTubeID() string {
 	return string(b)
 }
 
+// Generates a random string to simulate a randomized token
+func generateRandomToken() string {
+	b := make([]byte, 16)
+	for i := range b {
+		b[i] = ytIDChars[rand.Intn(len(ytIDChars))]
+	}
+	return "fake_token_" + string(b)
+}
+
 // ==========================================
 // CLIENT STRUCT
 // ==========================================
@@ -80,85 +88,31 @@ func (c *StressClient) DoRefresh() {
 	c.lock.Unlock()
 
 	vidID := generateRandomYouTubeID()
+	fakeToken := generateRandomToken()
 	
 	// Define the backoff intervals for 429 responses (5s, then 10s)
 	backoffDelays := []time.Duration{5 * time.Second, 10 * time.Second}
 
-	// STEP 1: Request the download token
-	downloadURL := fmt.Sprintf("%sdownload?url=%s&type=audio", SERVER_URL, vidID)
-	var resp1 *http.Response
+	// DIRECTLY request the stream endpoint using the fake token
+	streamURL := fmt.Sprintf("%sstream/%s?type=audio&token=%s", SERVER_URL, vidID, fakeToken)
+	var resp *http.Response
 
 	for attempt := 0; attempt <= len(backoffDelays); attempt++ {
-		req1, err := http.NewRequest("GET", downloadURL, nil)
-		if err != nil {
-			log.Printf("[Client %d] NewRequest failed: %v", c.clientID, err)
-			return
-		}
-
-		resp1, err = c.httpClient.Do(req1)
-		if err != nil {
-			log.Printf("[Client %d] Request 1 error: %v", c.clientID, err)
-			return
-		}
-
-		// Handle 429 Too Many Requests
-		if resp1.StatusCode == 429 {
-			resp1.Body.Close()
-			if attempt < len(backoffDelays) {
-				log.Printf("[Client %d] API returned 429 for ID %s. Waiting %v before retry...", c.clientID, vidID, backoffDelays[attempt])
-				time.Sleep(backoffDelays[attempt])
-				continue
-			} else {
-				log.Printf("[Client %d] API returned 429 for ID %s. Max retries reached. Dropping.", c.clientID, vidID)
-				return
-			}
-		}
-		
-		// If not 429, break out of the retry loop
-		break
-	}
-	defer resp1.Body.Close()
-
-	if resp1.StatusCode != 200 {
-		log.Printf("[Client %d] API returned non-200 status for ID %s: %d", c.clientID, vidID, resp1.StatusCode)
-		io.Copy(io.Discard, resp1.Body)
-		return
-	}
-
-	// Parse JSON to get the token
-	var result map[string]interface{}
-	if err := json.NewDecoder(resp1.Body).Decode(&result); err != nil {
-		log.Printf("[Client %d] Failed to decode JSON: %v", c.clientID, err)
-		return
-	}
-
-	tokenData, ok := result["download_token"]
-	if !ok || tokenData == nil {
-		log.Printf("[Client %d] No download_token in response for ID %s", c.clientID, vidID)
-		return
-	}
-	token := tokenData.(string)
-
-	// STEP 2: Request the stream endpoint using the token
-	streamURL := fmt.Sprintf("%sstream/%s?type=audio&token=%s", SERVER_URL, vidID, token)
-	var resp2 *http.Response
-
-	for attempt := 0; attempt <= len(backoffDelays); attempt++ {
-		req2, err := http.NewRequest("GET", streamURL, nil)
+		req, err := http.NewRequest("GET", streamURL, nil)
 		if err != nil {
 			log.Printf("[Client %d] Stream NewRequest failed: %v", c.clientID, err)
 			return
 		}
 
-		resp2, err = c.httpClient.Do(req2)
+		resp, err = c.httpClient.Do(req)
 		if err != nil {
 			log.Printf("[Client %d] Stream Request error: %v", c.clientID, err)
 			return
 		}
 
-		// Handle 429 Too Many Requests on the Stream endpoint as well
-		if resp2.StatusCode == 429 {
-			resp2.Body.Close()
+		// Handle 429 Too Many Requests
+		if resp.StatusCode == 429 {
+			resp.Body.Close()
 			if attempt < len(backoffDelays) {
 				log.Printf("[Client %d] Stream API returned 429 for ID %s. Waiting %v before retry...", c.clientID, vidID, backoffDelays[attempt])
 				time.Sleep(backoffDelays[attempt])
@@ -174,10 +128,10 @@ func (c *StressClient) DoRefresh() {
 	}
 	
 	// DROP THE REQUEST: Immediately close the body without using io.Copy
-	// This abandons the download payload while still forcing the server to process the API request
-	resp2.Body.Close()
+	// This abandons the payload while still forcing the server to process the API request
+	resp.Body.Close()
 
-	log.Printf("[Client %d] Success! Stream Requested & Dropped -> Status: %d | ID: %s", c.clientID, resp2.StatusCode, vidID)
+	log.Printf("[Client %d] Success! Stream Requested & Dropped -> Status: %d | ID: %s | Token: %s", c.clientID, resp.StatusCode, vidID, fakeToken)
 }
 
 func (c *StressClient) Run() {
@@ -201,7 +155,7 @@ func main() {
 	log.Println(" KING-CLAIMER HTTP REFRESH STRESS TESTER ")
 	log.Printf(" Target: %s", SERVER_URL)
 	log.Printf(" Clients: %d | Workers: %d | Delay: %v", TOTAL_CLIENTS, MAX_WORKERS, REFRESH_DELAY)
-	log.Println(" Mode: API Token Request + Stream Drop (Bandwidth Saver)")
+	log.Println(" Mode: Direct Stream Request + Fake Token (Bandwidth Saver)")
 	log.Println(" Purpose: Test regional routing + load balancing")
 	log.Println("========================================")
 
