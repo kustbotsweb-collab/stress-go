@@ -81,18 +81,41 @@ func (c *StressClient) DoRefresh() {
 
 	vidID := generateRandomYouTubeID()
 	
+	// Define the backoff intervals for 429 responses (5s, then 10s)
+	backoffDelays := []time.Duration{5 * time.Second, 10 * time.Second}
+
 	// STEP 1: Request the download token
 	downloadURL := fmt.Sprintf("%sdownload?url=%s&type=audio", SERVER_URL, vidID)
-	req1, err := http.NewRequest("GET", downloadURL, nil)
-	if err != nil {
-		log.Printf("[Client %d] NewRequest failed: %v", c.clientID, err)
-		return
-	}
+	var resp1 *http.Response
 
-	resp1, err := c.httpClient.Do(req1)
-	if err != nil {
-		log.Printf("[Client %d] Request 1 error: %v", c.clientID, err)
-		return
+	for attempt := 0; attempt <= len(backoffDelays); attempt++ {
+		req1, err := http.NewRequest("GET", downloadURL, nil)
+		if err != nil {
+			log.Printf("[Client %d] NewRequest failed: %v", c.clientID, err)
+			return
+		}
+
+		resp1, err = c.httpClient.Do(req1)
+		if err != nil {
+			log.Printf("[Client %d] Request 1 error: %v", c.clientID, err)
+			return
+		}
+
+		// Handle 429 Too Many Requests
+		if resp1.StatusCode == 429 {
+			resp1.Body.Close()
+			if attempt < len(backoffDelays) {
+				log.Printf("[Client %d] API returned 429 for ID %s. Waiting %v before retry...", c.clientID, vidID, backoffDelays[attempt])
+				time.Sleep(backoffDelays[attempt])
+				continue
+			} else {
+				log.Printf("[Client %d] API returned 429 for ID %s. Max retries reached. Dropping.", c.clientID, vidID)
+				return
+			}
+		}
+		
+		// If not 429, break out of the retry loop
+		break
 	}
 	defer resp1.Body.Close()
 
@@ -118,16 +141,36 @@ func (c *StressClient) DoRefresh() {
 
 	// STEP 2: Request the stream endpoint using the token
 	streamURL := fmt.Sprintf("%sstream/%s?type=audio&token=%s", SERVER_URL, vidID, token)
-	req2, err := http.NewRequest("GET", streamURL, nil)
-	if err != nil {
-		log.Printf("[Client %d] Stream NewRequest failed: %v", c.clientID, err)
-		return
-	}
+	var resp2 *http.Response
 
-	resp2, err := c.httpClient.Do(req2)
-	if err != nil {
-		log.Printf("[Client %d] Stream Request error: %v", c.clientID, err)
-		return
+	for attempt := 0; attempt <= len(backoffDelays); attempt++ {
+		req2, err := http.NewRequest("GET", streamURL, nil)
+		if err != nil {
+			log.Printf("[Client %d] Stream NewRequest failed: %v", c.clientID, err)
+			return
+		}
+
+		resp2, err = c.httpClient.Do(req2)
+		if err != nil {
+			log.Printf("[Client %d] Stream Request error: %v", c.clientID, err)
+			return
+		}
+
+		// Handle 429 Too Many Requests on the Stream endpoint as well
+		if resp2.StatusCode == 429 {
+			resp2.Body.Close()
+			if attempt < len(backoffDelays) {
+				log.Printf("[Client %d] Stream API returned 429 for ID %s. Waiting %v before retry...", c.clientID, vidID, backoffDelays[attempt])
+				time.Sleep(backoffDelays[attempt])
+				continue
+			} else {
+				log.Printf("[Client %d] Stream API returned 429 for ID %s. Max retries reached. Dropping.", c.clientID, vidID)
+				return
+			}
+		}
+
+		// If not 429, break out of the retry loop
+		break
 	}
 	
 	// DROP THE REQUEST: Immediately close the body without using io.Copy
