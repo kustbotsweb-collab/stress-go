@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"io"
 	"log"
 	"math/rand"
@@ -19,16 +18,14 @@ import (
 // CONFIGURATION (STAY STEALTHY)
 // ==========================================
 var (
-	SERVER_URL    = getEnv("TARGET_URL", "https://shrutibots.site/")
-	TOTAL_CLIENTS = 400                       // Number of concurrent refresh clients
-	MAX_WORKERS   = 400
-	REFRESH_DELAY = 500 * time.Millisecond // Lower = heavier stress
+	SERVER_URL      = getEnv("TARGET_URL", "https://shrutibots.site/stream/k_Pkyyn7UE0?type=audio&token=ShrutiMusic8WnZDCSQoIjwGMmDlyPcVvKmK7YOfObUdWYVgZ6hTK4U0WGgwU5HZIhMhByPoZSDc0EwzT2LnChE1LtUj4oYyCANu3qLLgIXgSBgShrutiBots")
+	TOTAL_CLIENTS   = 1          // Number of concurrent refresh clients
+	MAX_WORKERS     = 1
+	REFRESH_DELAY   = 1000 * time.Millisecond // Lower = heavier stress (80ms ≈ 375 RPS total)
 )
 
 // Worker Semaphore to limit max workers
 var workerSemaphore = make(chan struct{}, MAX_WORKERS)
-
-const ytIDChars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_"
 
 func init() {
 	rand.Seed(time.Now().UnixNano())
@@ -44,33 +41,15 @@ func getEnv(key, defaultValue string) string {
 	return defaultValue
 }
 
-// Generates a random 11-character string to simulate a YouTube ID
-func generateRandomYouTubeID() string {
-	b := make([]byte, 11)
-	for i := range b {
-		b[i] = ytIDChars[rand.Intn(len(ytIDChars))]
-	}
-	return string(b)
-}
-
-// Generates a random string to simulate a randomized token
-func generateRandomToken() string {
-	b := make([]byte, 16)
-	for i := range b {
-		b[i] = ytIDChars[rand.Intn(len(ytIDChars))]
-	}
-	return "fake_token_" + string(b)
-}
-
 // ==========================================
 // CLIENT STRUCT
 // ==========================================
 type StressClient struct {
-	clientID     int
-	running      bool
+	clientID     int
+	running      bool
 	lastActivity time.Time
-	lock         sync.Mutex
-	httpClient   *http.Client
+	lock         sync.Mutex
+	httpClient   *http.Client
 }
 
 func NewStressClient(id int) *StressClient {
@@ -87,51 +66,26 @@ func (c *StressClient) DoRefresh() {
 	c.lastActivity = time.Now()
 	c.lock.Unlock()
 
-	vidID := generateRandomYouTubeID()
-	fakeToken := generateRandomToken()
-	
-	// Define the backoff intervals for 429 responses (5s, then 10s)
-	backoffDelays := []time.Duration{5 * time.Second, 10 * time.Second}
+	targetURL := SERVER_URL
 
-	// DIRECTLY request the stream endpoint using the fake token
-	streamURL := fmt.Sprintf("%sstream/%s?type=audio&token=%s", SERVER_URL, vidID, fakeToken)
-	var resp *http.Response
-
-	for attempt := 0; attempt <= len(backoffDelays); attempt++ {
-		req, err := http.NewRequest("GET", streamURL, nil)
-		if err != nil {
-			log.Printf("[Client %d] Stream NewRequest failed: %v", c.clientID, err)
-			return
-		}
-
-		resp, err = c.httpClient.Do(req)
-		if err != nil {
-			log.Printf("[Client %d] Stream Request error: %v", c.clientID, err)
-			return
-		}
-
-		// Handle 429 Too Many Requests
-		if resp.StatusCode == 429 {
-			resp.Body.Close()
-			if attempt < len(backoffDelays) {
-				log.Printf("[Client %d] Stream API returned 429 for ID %s. Waiting %v before retry...", c.clientID, vidID, backoffDelays[attempt])
-				time.Sleep(backoffDelays[attempt])
-				continue
-			} else {
-				log.Printf("[Client %d] Stream API returned 429 for ID %s. Max retries reached. Dropping.", c.clientID, vidID)
-				return
-			}
-		}
-
-		// If not 429, break out of the retry loop
-		break
+	req, err := http.NewRequest("GET", targetURL, nil)
+	if err != nil {
+		log.Printf("[Client %d] NewRequest failed: %v", c.clientID, err)
+		return
 	}
-	
-	// DROP THE REQUEST: Immediately close the body without using io.Copy
-	// This abandons the payload while still forcing the server to process the API request
-	resp.Body.Close()
 
-	log.Printf("[Client %d] Success! Stream Requested & Dropped -> Status: %d | ID: %s | Token: %s", c.clientID, resp.StatusCode, vidID, fakeToken)
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		log.Printf("[Client %d] Request error: %v", c.clientID, err)
+		return
+	}
+	defer resp.Body.Close()
+
+	// Consume body (simulates real browser, keeps connection alive for load balancer test)
+	io.Copy(io.Discard, resp.Body)
+
+	// Logging response headers like X-Cache can show if you hit or missed (Fastly specific)
+	log.Printf("[Client %d] Page Refresh -> Status: %d | %s", c.clientID, resp.StatusCode, targetURL)
 }
 
 func (c *StressClient) Run() {
@@ -155,7 +109,7 @@ func main() {
 	log.Println(" KING-CLAIMER HTTP REFRESH STRESS TESTER ")
 	log.Printf(" Target: %s", SERVER_URL)
 	log.Printf(" Clients: %d | Workers: %d | Delay: %v", TOTAL_CLIENTS, MAX_WORKERS, REFRESH_DELAY)
-	log.Println(" Mode: Direct Stream Request + Fake Token (Bandwidth Saver)")
+	log.Println(" Mode: Repeated page refresh")
 	log.Println(" Purpose: Test regional routing + load balancing")
 	log.Println("========================================")
 
