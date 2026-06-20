@@ -132,7 +132,7 @@ func NewStressClient(id int) *StressClient {
 }
 
 func getWAFHeaders() http.Header {
-	ua := fmt.Sprintf("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36")
+	ua := "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36"
 	headers := http.Header{}
 	headers.Add("User-Agent", ua)
 	headers.Add("Origin", "https://stake.ac")
@@ -153,7 +153,7 @@ func randomJitter(base time.Duration) time.Duration {
 	return base + jitter
 }
 
-// Custom uTLS Dialer for better fingerprint
+// Custom uTLS Dialer for advanced TLS fingerprint
 func utlsDial(network, addr string) (net.Conn, error) {
 	dialer := &net.Dialer{
 		Timeout: 15 * time.Second,
@@ -168,7 +168,7 @@ func utlsDial(network, addr string) (net.Conn, error) {
 		InsecureSkipVerify: true,
 	}
 
-	uConn := utls.UClient(tcpConn, config, utls.HelloChrome_120) // Chrome-like fingerprint
+	uConn := utls.UClient(tcpConn, config, utls.HelloChrome_120)
 	err = uConn.Handshake()
 	if err != nil {
 		tcpConn.Close()
@@ -205,7 +205,7 @@ func (c *StressClient) Connect() bool {
 
 	dialer := websocket.DefaultDialer
 	dialer.HandshakeTimeout = 15 * time.Second
-	dialer.NetDial = utlsDial // Use uTLS for fingerprint
+	dialer.NetDial = utlsDial // uTLS integration for better fingerprint
 
 	ws, resp, err := dialer.Dial(connectURL, getWAFHeaders())
 	if err != nil {
