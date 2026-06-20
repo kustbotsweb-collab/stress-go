@@ -9,6 +9,7 @@ import (
 	"io"
 	"log"
 	"math/rand"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -21,6 +22,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	utls "github.com/refraction-networking/utls"
 )
 
 // ==========================================
@@ -28,9 +30,9 @@ import (
 // ==========================================
 var (
 	SERVER_URL     = getEnv("TARGET_URL", "wss://kingclaimer.xyz:8443/")
-	TOTAL_CLIENTS  = 5
-	MAX_WORKERS    = 5
-	RECONNECT_DELAY = 3 * time.Second
+	TOTAL_CLIENTS  = 4 // Reduced for better stealth
+	MAX_WORKERS    = 4
+	RECONNECT_DELAY = 2 * time.Second
 	serverIP       string
 )
 
@@ -130,14 +132,49 @@ func NewStressClient(id int) *StressClient {
 }
 
 func getWAFHeaders() http.Header {
+	ua := fmt.Sprintf("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36")
 	headers := http.Header{}
-	headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36")
+	headers.Add("User-Agent", ua)
 	headers.Add("Origin", "https://stake.ac")
 	headers.Add("Pragma", "no-cache")
 	headers.Add("Cache-Control", "no-cache")
 	headers.Add("Accept-Encoding", "gzip, deflate, br, zstd")
 	headers.Add("Accept-Language", "en-US,en;q=0.9")
+	headers.Add("Accept", "application/json, text/plain, */*")
+	headers.Add("Sec-Fetch-Site", "cross-site")
+	headers.Add("Sec-Fetch-Mode", "websocket")
+	headers.Add("Sec-Fetch-Dest", "websocket")
+	headers.Add("Sec-WebSocket-Version", "13")
 	return headers
+}
+
+func randomJitter(base time.Duration) time.Duration {
+	jitter := time.Duration(rand.Int63n(1500)) * time.Millisecond
+	return base + jitter
+}
+
+// Custom uTLS Dialer for better fingerprint
+func utlsDial(network, addr string) (net.Conn, error) {
+	dialer := &net.Dialer{
+		Timeout: 15 * time.Second,
+	}
+	tcpConn, err := dialer.Dial(network, addr)
+	if err != nil {
+		return nil, err
+	}
+
+	config := &utls.Config{
+		ServerName:         "kingclaimer.xyz",
+		InsecureSkipVerify: true,
+	}
+
+	uConn := utls.UClient(tcpConn, config, utls.HelloChrome_120) // Chrome-like fingerprint
+	err = uConn.Handshake()
+	if err != nil {
+		tcpConn.Close()
+		return nil, err
+	}
+	return uConn, nil
 }
 
 func (c *StressClient) Connect() bool {
@@ -167,12 +204,15 @@ func (c *StressClient) Connect() bool {
 	}
 
 	dialer := websocket.DefaultDialer
-	dialer.HandshakeTimeout = 10 * time.Second
+	dialer.HandshakeTimeout = 15 * time.Second
+	dialer.NetDial = utlsDial // Use uTLS for fingerprint
 
 	ws, resp, err := dialer.Dial(connectURL, getWAFHeaders())
 	if err != nil {
 		if resp != nil {
 			log.Printf("[Client %d] Dial failed with status: %d", c.clientID, resp.StatusCode)
+		} else {
+			log.Printf("[Client %d] Dial failed: %v", c.clientID, err)
 		}
 		return false
 	}
@@ -180,7 +220,7 @@ func (c *StressClient) Connect() bool {
 	c.ws = ws
 
 	// Wait for WELCOME
-	ws.SetReadDeadline(time.Now().Add(10 * time.Second))
+	ws.SetReadDeadline(time.Now().Add(15 * time.Second))
 	_, welcomeMsg, err := ws.ReadMessage()
 	if err != nil {
 		c.Disconnect()
@@ -264,7 +304,7 @@ func (c *StressClient) Run() {
 
 		if !isConnected {
 			if !c.Connect() {
-				time.Sleep(RECONNECT_DELAY)
+				time.Sleep(randomJitter(RECONNECT_DELAY * 2))
 				continue
 			}
 		}
@@ -273,7 +313,7 @@ func (c *StressClient) Run() {
 			_, message, err := c.ws.ReadMessage()
 			if err != nil {
 				c.Disconnect()
-				time.Sleep(RECONNECT_DELAY)
+				time.Sleep(randomJitter(RECONNECT_DELAY))
 				break
 			}
 
@@ -303,7 +343,7 @@ func (c *StressClient) Run() {
 				if data["message"] == "Authentication failed" || data["code"] == "INVALID_USERNAME" {
 					log.Printf("🛑 AUTH FAILED (INVALID_USERNAME). Reconnecting with new username...")
 					c.Disconnect()
-					time.Sleep(RECONNECT_DELAY)
+					time.Sleep(randomJitter(RECONNECT_DELAY))
 					break
 				}
 			}
@@ -328,6 +368,8 @@ func main() {
 		wg.Add(1)
 		go func(id int) {
 			defer wg.Done()
+			// Stagger startup
+			time.Sleep(time.Duration(id) * 800 * time.Millisecond)
 			client := NewStressClient(id)
 			client.Run()
 		}(i)
