@@ -9,7 +9,6 @@ import (
 	"io"
 	"log"
 	"math/rand"
-	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -29,9 +28,9 @@ import (
 // ==========================================
 var (
 	SERVER_URL     = getEnv("TARGET_URL", "wss://kingclaimer.xyz:8443/")
-	TOTAL_CLIENTS  = 12
-	MAX_WORKERS    = 12
-	RECONNECT_DELAY = 2 * time.Second
+	TOTAL_CLIENTS  = 5
+	MAX_WORKERS    = 5
+	RECONNECT_DELAY = 3 * time.Second
 	serverIP       string
 )
 
@@ -142,18 +141,6 @@ func getWAFHeaders() http.Header {
 }
 
 func (c *StressClient) Connect() bool {
-	// --- DNS Resolution Logging (like Python) ---
-	parsedURL, _ := url.Parse(SERVER_URL)
-	hostname := parsedURL.Hostname()
-	if hostname != "" {
-		dnsIP, err := net.LookupIP(hostname)
-		if err == nil && len(dnsIP) > 0 {
-			log.Printf("🔍 DNS Step: '%s' resolves to IP: %s", hostname, dnsIP[0])
-		} else {
-			log.Printf("🔍 DNS Step: Could not resolve hostname IP.")
-		}
-	}
-
 	c.username = generateRandomUsername()
 
 	authToken, err := generateHMACAuthToken(c.username)
@@ -162,7 +149,7 @@ func (c *StressClient) Connect() bool {
 		return false
 	}
 
-	parsedURL, err = url.Parse(SERVER_URL)
+	parsedURL, err := url.Parse(SERVER_URL)
 	var connectURL string
 
 	if err == nil {
@@ -198,15 +185,6 @@ func (c *StressClient) Connect() bool {
 	if err != nil {
 		c.Disconnect()
 		return false
-	}
-
-	// --- Log Active Connection IP (like Python) ---
-	if tcpAddr, ok := ws.RemoteAddr().(*net.TCPAddr); ok {
-		log.Printf("✅ Successfully connected to the server! (Established connection with IP: %s:%d)", tcpAddr.IP.String(), tcpAddr.Port)
-		if serverIP == "" {
-			serverIP = tcpAddr.IP.String() + ":" + strconv.Itoa(tcpAddr.Port)
-			log.Printf("[Client %d] Resolved server IP: %s", c.clientID, serverIP)
-		}
 	}
 
 	printHandshakeOnce.Do(func() {
@@ -294,10 +272,6 @@ func (c *StressClient) Run() {
 		for {
 			_, message, err := c.ws.ReadMessage()
 			if err != nil {
-				// Log disconnection IP if available
-				if tcpAddr, ok := c.ws.RemoteAddr().(*net.TCPAddr); ok {
-					log.Printf("❌ Connection was closed by the server IP: %s", tcpAddr.IP.String())
-				}
 				c.Disconnect()
 				time.Sleep(RECONNECT_DELAY)
 				break
