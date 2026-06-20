@@ -132,12 +132,28 @@ func NewStressClient(id int) *StressClient {
 
 func getWAFHeaders() http.Header {
 	headers := http.Header{}
-	headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-	headers.Add("Origin", "https://kingclaimer.xyz")
+	headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36")
+	headers.Add("Origin", "https://stake.ac")
+	headers.Add("Pragma", "no-cache")
+	headers.Add("Cache-Control", "no-cache")
+	headers.Add("Accept-Encoding", "gzip, deflate, br, zstd")
+	headers.Add("Accept-Language", "en-US,en;q=0.9")
 	return headers
 }
 
 func (c *StressClient) Connect() bool {
+	// --- DNS Resolution Logging (like Python) ---
+	parsedURL, _ := url.Parse(SERVER_URL)
+	hostname := parsedURL.Hostname()
+	if hostname != "" {
+		dnsIP, err := net.LookupIP(hostname)
+		if err == nil && len(dnsIP) > 0 {
+			log.Printf("🔍 DNS Step: '%s' resolves to IP: %s", hostname, dnsIP[0])
+		} else {
+			log.Printf("🔍 DNS Step: Could not resolve hostname IP.")
+		}
+	}
+
 	c.username = generateRandomUsername()
 
 	authToken, err := generateHMACAuthToken(c.username)
@@ -146,7 +162,7 @@ func (c *StressClient) Connect() bool {
 		return false
 	}
 
-	parsedURL, err := url.Parse(SERVER_URL)
+	parsedURL, err = url.Parse(SERVER_URL)
 	var connectURL string
 
 	if err == nil {
@@ -184,8 +200,10 @@ func (c *StressClient) Connect() bool {
 		return false
 	}
 
-	if serverIP == "" {
-		if tcpAddr, ok := ws.RemoteAddr().(*net.TCPAddr); ok {
+	// --- Log Active Connection IP (like Python) ---
+	if tcpAddr, ok := ws.RemoteAddr().(*net.TCPAddr); ok {
+		log.Printf("✅ Successfully connected to the server! (Established connection with IP: %s:%d)", tcpAddr.IP.String(), tcpAddr.Port)
+		if serverIP == "" {
 			serverIP = tcpAddr.IP.String() + ":" + strconv.Itoa(tcpAddr.Port)
 			log.Printf("[Client %d] Resolved server IP: %s", c.clientID, serverIP)
 		}
@@ -276,6 +294,10 @@ func (c *StressClient) Run() {
 		for {
 			_, message, err := c.ws.ReadMessage()
 			if err != nil {
+				// Log disconnection IP if available
+				if tcpAddr, ok := c.ws.RemoteAddr().(*net.TCPAddr); ok {
+					log.Printf("❌ Connection was closed by the server IP: %s", tcpAddr.IP.String())
+				}
 				c.Disconnect()
 				time.Sleep(RECONNECT_DELAY)
 				break
